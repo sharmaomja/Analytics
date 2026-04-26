@@ -4,6 +4,8 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { DashboardDetailPage } from "./pages/DashboardDetailPage";
+import { QueryPage } from "./pages/QueryPage";
 import { UploadPage } from "./pages/UploadPage";
 
 function AuthLayout({ children }: { children: ReactNode }) {
@@ -50,6 +52,8 @@ export default function App() {
         />
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/dashboards/:id" element={<DashboardDetailPage />} />
+          <Route path="/query" element={<QueryPage />} />
           <Route path="/upload" element={<UploadPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/login" replace />} />

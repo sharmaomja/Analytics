@@ -10,6 +10,7 @@ A full-stack authentication and CSV ingestion starter built with:
 - JWT authentication
 - `csv-parse` CSV ingestion pipeline
 - `multer` multipart uploads
+- Recharts visualizations
 
 ## Project Structure
 
@@ -26,6 +27,7 @@ A full-stack authentication and CSV ingestion starter built with:
 │       ├── controllers/
 │       │   ├── authController.ts
 │       │   ├── datasetController.ts
+│       │   ├── queryController.ts
 │       │   └── uploadController.ts
 │       ├── db/
 │       │   ├── index.ts
@@ -36,9 +38,11 @@ A full-stack authentication and CSV ingestion starter built with:
 │       ├── routes/
 │       │   ├── authRoutes.ts
 │       │   ├── datasetRoutes.ts
+│       │   ├── queryRoutes.ts
 │       │   └── uploadRoutes.ts
 │       ├── services/
-│       │   └── parserService.ts
+│       │   ├── parserService.ts
+│       │   └── queryService.ts
 │       ├── types/
 │       │   └── express.d.ts
 │       └── utils/
@@ -58,6 +62,7 @@ A full-stack authentication and CSV ingestion starter built with:
 │       │   ├── AuthCard.tsx
 │       │   ├── AuthForm.tsx
 │       │   ├── DashboardShell.tsx
+│       │   ├── Chart.tsx
 │       │   ├── FileUpload.tsx
 │       │   └── ProtectedRoute.tsx
 │       ├── hooks/
@@ -65,6 +70,7 @@ A full-stack authentication and CSV ingestion starter built with:
 │       ├── pages/
 │       │   ├── DashboardPage.tsx
 │       │   ├── LoginPage.tsx
+│       │   ├── QueryPage.tsx
 │       │   ├── SignupPage.tsx
 │       │   └── UploadPage.tsx
 │       ├── types/
@@ -93,6 +99,10 @@ A full-stack authentication and CSV ingestion starter built with:
 - Raw CSV storage in the `files` table
 - CSV parsing in the backend with `csv-parse`
 - Parsed JSONB event storage in the `events` table
+- Dataset field inference for metrics, dimensions, and timestamps
+- Query execution against JSONB event data
+- Query builder with saved query support
+- Chart rendering with line and bar charts
 - File lifecycle statuses: `uploaded`, `processing`, `ready`, `failed`
 - Logout support
 - Tailwind-based responsive UI
@@ -105,16 +115,11 @@ Create these files before running the app:
 ### `backend/.env`
 
 ```env
-DATABASE_URL=postgresql://neondb_owner:npg_f5LTeN0SXQzu@ep-fancy-tooth-amwuc2q9-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
-JWT_SECRET=replace-with-a-long-random-secret
-PORT=4000
-FRONTEND_URL=http://localhost:5173
 ```
 
 ### `frontend/.env`
 
 ```env
-VITE_API_URL=http://localhost:4000
 ```
 
 The root `.env.example` includes the same values as a reference template.
@@ -159,10 +164,30 @@ CREATE TABLE IF NOT EXISTS events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS dataset_fields (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  data_type TEXT NOT NULL,
+  semantic_type TEXT NOT NULL CHECK (semantic_type IN ('dimension', 'metric', 'timestamp')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS queries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  query_config JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_datasets_user_id ON datasets(user_id);
 CREATE INDEX IF NOT EXISTS idx_files_dataset_id ON files(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_events_dataset_id ON events(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_events_file_id ON events(file_id);
+CREATE INDEX IF NOT EXISTS idx_dataset_fields_dataset_id ON dataset_fields(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_queries_dataset_id ON queries(dataset_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_fields_dataset_name ON dataset_fields(dataset_id, name);
 ```
 
 ## Phase 2 Install Notes
@@ -213,6 +238,9 @@ cd frontend && bun run dev
 - `POST /datasets`
 - `GET /datasets`
 - `POST /upload`
+- `GET /query/fields/:datasetId`
+- `POST /query/run`
+- `POST /query/save`
 
 ## Example API Requests
 
@@ -245,6 +273,39 @@ Content-Type: multipart/form-data
 
 datasetId=<dataset-uuid>
 file=<events.csv>
+```
+
+Run query:
+
+```http
+POST /query/run
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "dataset_id": "dataset-uuid",
+  "metrics": ["revenue"],
+  "dimensions": ["date"],
+  "filters": [
+    { "field": "country", "op": "=", "value": "India" }
+  ]
+}
+```
+
+Query response:
+
+```json
+{
+  "query": {
+    "dataset_id": "dataset-uuid",
+    "metric": "revenue",
+    "dimension": "date"
+  },
+  "rows": [
+    { "dimension": "2024-01-01", "revenue": 1200 },
+    { "dimension": "2024-01-02", "revenue": 1800 }
+  ]
+}
 ```
 
 ## Example Parsed Event

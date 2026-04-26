@@ -37,6 +37,9 @@ export function DashboardShell({ title, eyebrow, description, children }: Dashbo
             <NavLink to="/upload" className={navClassName}>
               Upload
             </NavLink>
+            <NavLink to="/query" className={navClassName}>
+              Query
+            </NavLink>
             <button
               type="button"
               onClick={logout}

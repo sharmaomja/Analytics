@@ -92,10 +92,11 @@ export function UploadPage() {
       setStage("ready");
 
       window.setTimeout(() => {
-        navigate("/dashboard", {
+        navigate("/query", {
           replace: true,
           state: {
             uploadMessage: `${uploadResponse.insertedCount} events ingested from ${uploadResponse.file.file_name}.`,
+            datasetId: datasetResponse.dataset.id,
           },
         });
       }, 900);

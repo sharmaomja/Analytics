@@ -1,6 +1,6 @@
 import { parse } from "csv-parse/sync";
 import { pool } from "../db/index.js";
-import { insertEventsBatch, updateFileStatus, type EventRow } from "../db/queries.js";
+import { createDatasetFields, insertEventsBatch, updateFileStatus, type DatasetFieldInput, type EventRow } from "../db/queries.js";
 
 type ProcessCsvInput = {
   datasetId: string;
@@ -9,6 +9,58 @@ type ProcessCsvInput = {
 };
 
 const batchSize = 250;
+
+const numericPattern = /^-?\d+(\.\d+)?$/;
+
+function isNumericValue(value: string): boolean {
+  return numericPattern.test(value.trim());
+}
+
+function isTimestampValue(value: string): boolean {
+  const normalized = value.trim();
+
+  if (!normalized) {
+    return false;
+  }
+
+  const timestamp = Date.parse(normalized);
+  return !Number.isNaN(timestamp);
+}
+
+function inferDatasetFields(rows: EventRow[]): DatasetFieldInput[] {
+  const fieldNames = Object.keys(rows[0] ?? {});
+
+  return fieldNames.map(name => {
+    const values = rows
+      .map(row => String(row[name] ?? "").trim())
+      .filter(value => value !== "");
+
+    const isNumeric = values.length > 0 && values.every(isNumericValue);
+    const isTimestamp = values.length > 0 && values.every(isTimestampValue);
+
+    if (isNumeric) {
+      return {
+        name,
+        data_type: "numeric",
+        semantic_type: "metric",
+      };
+    }
+
+    if (isTimestamp) {
+      return {
+        name,
+        data_type: "timestamp",
+        semantic_type: "timestamp",
+      };
+    }
+
+    return {
+      name,
+      data_type: "text",
+      semantic_type: "dimension",
+    };
+  });
+}
 
 function isEmptyRow(row: EventRow): boolean {
   return Object.values(row).every(value => String(value ?? "").trim() === "");
@@ -34,6 +86,9 @@ export async function processUploadedCsv({ datasetId, fileId, rawContent }: Proc
       error.statusCode = 400;
       throw error;
     }
+
+    const datasetFields = inferDatasetFields(validRows);
+    await createDatasetFields(datasetId, datasetFields, client);
 
     for (let index = 0; index < validRows.length; index += batchSize) {
       const batch = validRows.slice(index, index + batchSize);

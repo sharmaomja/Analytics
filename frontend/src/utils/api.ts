@@ -1,5 +1,19 @@
 import type { AuthResponse, MeResponse } from "../types/auth";
-import type { CreateDatasetResponse, ListDatasetsResponse, UploadResponse } from "../types/data";
+import type {
+  ChartType,
+  CreateDashboardResponse,
+  CreateDatasetResponse,
+  CreateWidgetResponse,
+  DashboardDetailResponse,
+  DeleteWidgetResponse,
+  DatasetFieldsResponse,
+  ListDashboardsResponse,
+  ListDatasetsResponse,
+  QueryConfig,
+  RunQueryResponse,
+  SaveQueryResponse,
+  UploadResponse,
+} from "../types/data";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -61,6 +75,26 @@ export function createDataset(token: string, name: string, description: string):
   });
 }
 
+export function createDashboard(token: string, name: string): Promise<CreateDashboardResponse> {
+  return request<CreateDashboardResponse>("/dashboards", {
+    method: "POST",
+    token,
+    body: { name },
+  });
+}
+
+export function fetchDashboards(token: string): Promise<ListDashboardsResponse> {
+  return request<ListDashboardsResponse>("/dashboards", {
+    token,
+  });
+}
+
+export function fetchDashboard(token: string, dashboardId: string): Promise<DashboardDetailResponse> {
+  return request<DashboardDetailResponse>(`/dashboards/${dashboardId}`, {
+    token,
+  });
+}
+
 export function fetchDatasets(token: string): Promise<ListDatasetsResponse> {
   return request<ListDatasetsResponse>("/datasets", {
     token,
@@ -77,5 +111,53 @@ export function uploadCsvFile(token: string, datasetId: string, file: File): Pro
     token,
     body: formData,
     isFormData: true,
+  });
+}
+
+export function fetchDatasetFields(token: string, datasetId: string): Promise<DatasetFieldsResponse> {
+  return request<DatasetFieldsResponse>(`/query/fields/${datasetId}`, {
+    token,
+  });
+}
+
+export function runQuery(token: string, queryConfig: QueryConfig): Promise<RunQueryResponse> {
+  return request<RunQueryResponse>("/query/run", {
+    method: "POST",
+    token,
+    body: queryConfig,
+  });
+}
+
+export function saveQuery(token: string, name: string, queryConfig: QueryConfig): Promise<SaveQueryResponse> {
+  return request<SaveQueryResponse>("/query/save", {
+    method: "POST",
+    token,
+    body: {
+      name,
+      query_config: queryConfig,
+    },
+  });
+}
+
+export function createWidget(
+  token: string,
+  input: {
+    dashboard_id: string;
+    query_id: string;
+    chart_type: ChartType;
+    position: { x: number; y: number; w: number; h: number };
+  },
+): Promise<CreateWidgetResponse> {
+  return request<CreateWidgetResponse>("/widgets", {
+    method: "POST",
+    token,
+    body: input,
+  });
+}
+
+export function deleteWidget(token: string, widgetId: string): Promise<DeleteWidgetResponse> {
+  return request<DeleteWidgetResponse>(`/widgets/${widgetId}`, {
+    method: "DELETE",
+    token,
   });
 }

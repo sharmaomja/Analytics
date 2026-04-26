@@ -36,6 +36,72 @@ export type SafeFileRecord = Omit<FileRecord, "raw_content">;
 
 export type EventRow = Record<string, string>;
 
+export type DatasetFieldDataType = "text" | "numeric" | "timestamp";
+
+export type DatasetFieldSemanticType = "dimension" | "metric" | "timestamp";
+
+export type DatasetField = {
+  id: string;
+  dataset_id: string;
+  name: string;
+  data_type: DatasetFieldDataType;
+  semantic_type: DatasetFieldSemanticType;
+  created_at: string;
+};
+
+export type DatasetFieldInput = {
+  name: string;
+  data_type: DatasetFieldDataType;
+  semantic_type: DatasetFieldSemanticType;
+};
+
+export type QueryConfig = {
+  dataset_id: string;
+  metrics: string[];
+  dimensions: string[];
+  filters: QueryFilter[];
+};
+
+export type QueryFilter = {
+  field: string;
+  op: "=" | "!=" | ">" | ">=" | "<" | "<=" | "contains";
+  value: string;
+};
+
+export type SavedQuery = {
+  id: string;
+  dataset_id: string;
+  name: string;
+  query_config: QueryConfig;
+  created_at: string;
+};
+
+export type Dashboard = {
+  id: string;
+  user_id: string;
+  name: string;
+  created_at: string;
+};
+
+export type ChartType = "line" | "bar";
+
+export type WidgetPosition = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
+export type DashboardWidget = {
+  id: string;
+  dashboard_id: string;
+  query_id: string;
+  chart_type: ChartType;
+  position: WidgetPosition;
+  config: Record<string, unknown> | null;
+  created_at: string;
+};
+
 export async function findUserByEmail(email: string): Promise<User | null> {
   const result = await pool.query<User>(
     "SELECT id, email, password_hash, created_at FROM users WHERE email = $1 LIMIT 1",
@@ -164,4 +230,145 @@ export function toSafeFileRecord(file: FileRecord): SafeFileRecord {
     status: file.status,
     created_at: file.created_at,
   };
+}
+
+export async function createDatasetFields(
+  datasetId: string,
+  fields: DatasetFieldInput[],
+  db: DbExecutor = pool,
+): Promise<void> {
+  if (fields.length === 0) {
+    return;
+  }
+
+  const values: string[] = [];
+  const parameters: string[] = [];
+
+  fields.forEach((field, index) => {
+    const offset = index * 4;
+    values.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4})`);
+    parameters.push(datasetId, field.name, field.data_type, field.semantic_type);
+  });
+
+  await db.query(
+    `INSERT INTO dataset_fields (dataset_id, name, data_type, semantic_type)
+     VALUES ${values.join(", ")}
+     ON CONFLICT (dataset_id, name)
+     DO UPDATE SET data_type = EXCLUDED.data_type, semantic_type = EXCLUDED.semantic_type`,
+    parameters,
+  );
+}
+
+export async function listDatasetFieldsByDatasetId(datasetId: string): Promise<DatasetField[]> {
+  const result = await pool.query<DatasetField>(
+    `SELECT id, dataset_id, name, data_type, semantic_type, created_at
+     FROM dataset_fields
+     WHERE dataset_id = $1
+     ORDER BY name ASC`,
+    [datasetId],
+  );
+
+  return result.rows;
+}
+
+export async function createSavedQuery(datasetId: string, name: string, queryConfig: QueryConfig): Promise<SavedQuery> {
+  const result = await pool.query<SavedQuery>(
+    `INSERT INTO queries (dataset_id, name, query_config)
+     VALUES ($1, $2, $3)
+     RETURNING id, dataset_id, name, query_config, created_at`,
+    [datasetId, name, queryConfig],
+  );
+
+  return result.rows[0];
+}
+
+export async function findSavedQueryByIdForUser(queryId: string, userId: string): Promise<SavedQuery | null> {
+  const result = await pool.query<SavedQuery>(
+    `SELECT q.id, q.dataset_id, q.name, q.query_config, q.created_at
+     FROM queries q
+     INNER JOIN datasets d ON d.id = q.dataset_id
+     WHERE q.id = $1 AND d.user_id = $2
+     LIMIT 1`,
+    [queryId, userId],
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function createDashboard(userId: string, name: string): Promise<Dashboard> {
+  const result = await pool.query<Dashboard>(
+    `INSERT INTO dashboards (user_id, name)
+     VALUES ($1, $2)
+     RETURNING id, user_id, name, created_at`,
+    [userId, name],
+  );
+
+  return result.rows[0];
+}
+
+export async function listDashboardsByUserId(userId: string): Promise<Dashboard[]> {
+  const result = await pool.query<Dashboard>(
+    `SELECT id, user_id, name, created_at
+     FROM dashboards
+     WHERE user_id = $1
+     ORDER BY created_at DESC`,
+    [userId],
+  );
+
+  return result.rows;
+}
+
+export async function findDashboardByIdForUser(dashboardId: string, userId: string): Promise<Dashboard | null> {
+  const result = await pool.query<Dashboard>(
+    `SELECT id, user_id, name, created_at
+     FROM dashboards
+     WHERE id = $1 AND user_id = $2
+     LIMIT 1`,
+    [dashboardId, userId],
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function createDashboardWidget(
+  dashboardId: string,
+  queryId: string,
+  chartType: ChartType,
+  position: WidgetPosition,
+  config: Record<string, unknown> | null = null,
+): Promise<DashboardWidget> {
+  const result = await pool.query<DashboardWidget>(
+    `INSERT INTO dashboard_widgets (dashboard_id, query_id, chart_type, position, config)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, dashboard_id, query_id, chart_type, position, config, created_at`,
+    [dashboardId, queryId, chartType, position, config],
+  );
+
+  return result.rows[0];
+}
+
+export async function listDashboardWidgetsByDashboardId(dashboardId: string): Promise<DashboardWidget[]> {
+  const result = await pool.query<DashboardWidget>(
+    `SELECT id, dashboard_id, query_id, chart_type, position, config, created_at
+     FROM dashboard_widgets
+     WHERE dashboard_id = $1
+     ORDER BY created_at ASC`,
+    [dashboardId],
+  );
+
+  return result.rows;
+}
+
+export async function deleteDashboardWidgetByIdForUser(widgetId: string, userId: string): Promise<DashboardWidget | null> {
+  const result = await pool.query<DashboardWidget>(
+    `DELETE FROM dashboard_widgets dw
+     USING dashboards d
+     WHERE dw.dashboard_id = d.id
+       AND dw.id = $1
+       AND d.user_id = $2
+     RETURNING dw.id, dw.dashboard_id, dw.query_id, dw.chart_type, dw.position, dw.config, dw.created_at`,
+    [widgetId, userId],
+  );
+
+  return result.rows[0] ?? null;
 }
