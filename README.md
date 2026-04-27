@@ -1,4 +1,4 @@
-# Full-Stack Auth Starter
+# Full-Stack
 
 A full-stack authentication and CSV ingestion starter built with:
 
